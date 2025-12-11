@@ -134,21 +134,21 @@ const wheelMaterial = new THREE.MeshStandardMaterial({
 const axleGeometry = new THREE.CylinderGeometry(0.1, 0.1, 4, 8);
 
 const leftWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-leftWheel.position.set(-3, -8, 1.5);
+leftWheel.position.set(-3, 1.5, -3);
 leftWheel.rotation.z = Math.PI / 2;
 leftWheel.castShadow = true;
 
 const rightWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-rightWheel.position.set(3, -8, 1.5);
+rightWheel.position.set(3, 1.5, -3);
 rightWheel.rotation.z = Math.PI / 2;
 rightWheel.castShadow = true;
 
 const leftAxle = new THREE.Mesh(axleGeometry, strutMaterial);
-leftAxle.position.set(-3, -8, 1.5);
+leftAxle.position.set(-3, 1, -2.5);
 leftAxle.castShadow = true;
 
 const rightAxle = new THREE.Mesh(axleGeometry, strutMaterial);
-rightAxle.position.set(3, -8, 1.5);
+rightAxle.position.set(3, 1, -2.5);
 rightAxle.castShadow = true;
 
 flightGroup.add(body);
@@ -206,11 +206,61 @@ scene.add(flightGroup);
 
 
 let propellerSpeed = 0;
-let speed = 0;
+let speed = 0.05;
+const MAX_SPEED = 2;
+const ACCELERATION = 0.01;
+const DECELERATION = 0.005;
+const ROTATION = 0.01;
+
+const keys = {};
+
+window.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+});
+
+window.addEventListener('keyup', (e) => {
+    keys[e.key.toLowerCase()] = false;
+});
+
+function updateControls() {
+    if (keys['w']) {
+        speed = Math.min(speed + ACCELERATION, MAX_SPEED);
+        propellerSpeed = 1;
+    } else if (keys['s']) {
+        speed = Math.max(speed - ACCELERATION, 0);
+        propellerSpeed = Math.max(propellerSpeed - ACCELERATION, 0);
+    } else {
+        speed = Math.max(speed -DECELERATION, 0);
+        propellerSpeed = Math.max(propellerSpeed, 0);
+    }
+
+    // Pitch
+    if (keys['arrowup']) flightGroup.rotation.x += ROTATION;
+    if (keys['arrowdown']) flightGroup.rotation.x -= ROTATION;
+
+    // Roll
+    if (keys['a']) flightGroup.rotation.z += ROTATION;
+    if (keys['d']) flightGroup.rotation.z -= ROTATION;
+
+    // Yaw
+    if (keys['arrowright']) flightGroup.rotation.y -= ROTATION;
+    if (keys['arrowleft']) flightGroup.rotation.y += ROTATION;
+
+    // Damping
+    if (!keys['a'] && !keys['d']) flightGroup.rotation.z *= 0.99;
+}
+
+function updatePhysics() {
+    flightGroup.position.y += -DECELERATION;
+    flightGroup.position.z += -speed;
+}
+
 function animate() {
     requestAnimationFrame(animate);
+    updateControls();
+    updatePhysics();
+
     propeller.rotation.y += propellerSpeed;
-    flightGroup.position.z += -speed;
 
     camera.position.copy(flightGroup.position).add(cameraOffset);
     camera.lookAt(flightGroup.position);
@@ -226,29 +276,7 @@ function animate() {
 
     renderer.render(scene, camera);
 }
-
-function start() {
-    propellerSpeed = 0.3;
-    speed = 10;
-}
-
-function stop() {
-    propellerSpeed = 0;
-    speed = 0;
-}
-
-//start();
 animate();
-
-window.addEventListener('keypress', (e) => {
-    if (e.code === 'Space') {
-        if (propellerSpeed > 0) {
-            stop();
-        } else {
-            start();
-        }
-    }
-});
 
 window.addEventListener('resize', function () {
     camera.aspect = window.innerWidth / window.innerHeight;
