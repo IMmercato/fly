@@ -193,13 +193,26 @@ starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVert
 const stars = new THREE.Points(starGeometry, starMaterial);
 scene.add(stars);
 
+const seaGeometry = new THREE.PlaneGeometry(10000,10000);
+const seaMaterial = new THREE.MeshStandardMaterial({
+    color: 0x006994,
+    metalness: 0.8,
+    roughness: 0.2
+});
+const sea = new THREE.Mesh(seaGeometry, seaMaterial);
+sea.rotation.x = -Math.PI / 2;
+sea.position.set(0, -200, 0);
+sea.receiveShadow = true;
+scene.add(sea);
+
 
 const ambientLight = new THREE.AmbientLight();
 scene.add(ambientLight);
 
-const cameraOffset = new THREE.Vector3(0, 50, 50);
+const idealOffset = new THREE.Vector3(0, -50, 50);
+const idealLookAt = new THREE.Vector3(0, 0, 0);
 
-camera.position.set(0, 50, 50);
+camera.position.set(0, 25, 50);
 camera.lookAt(0, 0, 0);
 
 scene.add(flightGroup);
@@ -207,10 +220,13 @@ scene.add(flightGroup);
 
 let propellerSpeed = 0;
 let speed = 0.05;
+let speedy = 0;
 const MAX_SPEED = 2;
 const ACCELERATION = 0.01;
 const DECELERATION = 0.005;
 const ROTATION = 0.01;
+const GRAVITY = 0.005;
+const SEA_LEVEL = -200;
 
 const keys = {};
 
@@ -230,7 +246,7 @@ function updateControls() {
         speed = Math.max(speed - ACCELERATION, 0);
         propellerSpeed = Math.max(propellerSpeed - ACCELERATION, 0);
     } else {
-        speed = Math.max(speed -DECELERATION, 0);
+        speed = Math.max(speed - DECELERATION, 0);
         propellerSpeed = Math.max(propellerSpeed, 0);
     }
 
@@ -239,20 +255,34 @@ function updateControls() {
     if (keys['arrowdown']) flightGroup.rotation.x -= ROTATION;
 
     // Roll
-    if (keys['a']) flightGroup.rotation.z += ROTATION;
-    if (keys['d']) flightGroup.rotation.z -= ROTATION;
+    if (keys['a']) flightGroup.rotation.y += ROTATION;
+    if (keys['d']) flightGroup.rotation.y -= ROTATION;
 
     // Yaw
-    if (keys['arrowright']) flightGroup.rotation.y -= ROTATION;
-    if (keys['arrowleft']) flightGroup.rotation.y += ROTATION;
+    if (keys['arrowright']) flightGroup.rotation.z -= ROTATION;
+    if (keys['arrowleft']) flightGroup.rotation.z += ROTATION;
 
     // Damping
     if (!keys['a'] && !keys['d']) flightGroup.rotation.z *= 0.99;
 }
 
 function updatePhysics() {
-    flightGroup.position.y += -DECELERATION;
-    flightGroup.position.z += -speed;
+    const forward = new THREE.Vector3(0, 1, 0);
+
+    forward.applyQuaternion(flightGroup.quaternion);
+
+    forward.multiplyScalar(speed);
+    flightGroup.position.add(forward);
+
+    speedy -= GRAVITY;
+
+    flightGroup.position.y += speedy;
+
+    if (flightGroup.position.y <= SEA_LEVEL + 5) {
+        flightGroup.position.y = SEA_LEVEL + 5;
+        if (speedy < 0) speedy = 0;
+        speed *= 0.75;
+    }
 }
 
 function animate() {
@@ -262,8 +292,23 @@ function animate() {
 
     propeller.rotation.y += propellerSpeed;
 
-    camera.position.copy(flightGroup.position).add(cameraOffset);
-    camera.lookAt(flightGroup.position);
+    // Camera follows plane rotation
+    const offset = idealOffset.clone();
+    offset.applyQuaternion(flightGroup.quaternion);
+    const targetPosition = flightGroup.position.clone().add(offset);
+    
+    const lookAt = idealLookAt.clone();
+    lookAt.applyQuaternion(flightGroup.quaternion);
+    const targetLookAt = flightGroup.position.clone().add(lookAt);
+    
+    // Smooth camera movement
+    camera.position.lerp(targetPosition, 0.1);
+    
+    const currentLookAt = new THREE.Vector3();
+    camera.getWorldDirection(currentLookAt);
+    currentLookAt.multiplyScalar(10).add(camera.position);
+    currentLookAt.lerp(targetLookAt, 0.1);
+    camera.lookAt(currentLookAt);
 
     const positions = starGeometry.attributes.position.array;
     for (let i = 0; i < positions.length; i += 3) {
