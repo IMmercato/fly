@@ -1,6 +1,7 @@
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js';
 
 const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x8a9a9b, 150, 600);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -167,37 +168,84 @@ flightGroup.add(rightWheel);
 
 flightGroup.rotation.x = Math.PI / -2;
 
-const bombs = new THREE.Group();
+const navyGroup = new THREE.Group();
+
+const hullGeometry = new THREE.ConeGeometry();
+
+const bombs = [];
 
 const bbGeometry = new THREE.CylinderGeometry(5, 5, 8, 8);
 const bbMaterial = new THREE.MeshStandardMaterial({
     color: 0x000000
 });
-const bb = new THREE.Mesh(bbGeometry, bbMaterial);
-scene.add(bb);
+for (let i = 0; i < 50; i++) {
+    const bb = new THREE.Mesh(bbGeometry, bbMaterial);
+    bb.position.set(
+        Math.random() * 500,
+        Math.random() * 200,
+        Math.random() * 500
+    );
+    bombs.push(bb);
+    scene.add(bb);
+}
 
 const starGeometry = new THREE.BufferGeometry();
 const starMaterial = new THREE.PointsMaterial({
     color: 0xFFFFFF,
     size: 0.5,
-    sizeAttenuation: true
+    sizeAttenuation: true,
+    transparent: true
 });
+const STAR_COUNT = 5000;
+const STAR_RADIUS = 2000;
 const starsVertices = [];
-for (let i = 0; i < 1000; i++) {
-    const x = (Math.random() - 0.5) * 400;
-    const y = (Math.random() - 0.5) * 400;
-    const z = (Math.random() - 0.5) * 400;
+for (let i = 0; i < STAR_COUNT; i++) {
+    const radius = STAR_RADIUS * Math.cbrt(Math.random());
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const x = radius * Math.sin(phi) * Math.cos(theta);
+    const y = radius * Math.sin(phi) * Math.sin(theta);
+    const z = radius * Math.cos(phi);
     starsVertices.push(x, y, z);
 }
 starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
 const stars = new THREE.Points(starGeometry, starMaterial);
 scene.add(stars);
 
-const seaGeometry = new THREE.PlaneGeometry(10000,10000);
+const cloudGeometry = new THREE.SphereGeometry(20, 8, 8);
+const cloudMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.7
+});
+
+for (let i = 0; i < 30; i++) {
+    const cloud = new THREE.Group();
+    for (let j = 0; j < 3; j++) {
+        const sphere = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        sphere.position.set(Math.random() * 40 - 20, Math.random() * 20 - 10, Math.random() * 40 - 20);
+        sphere.scale.set(Math.random() + 0.5, Math.random() + 0.5, Math.random() + 0.5);
+        cloud.add(sphere);
+    }
+    cloud.position.set(
+        Math.random() * 2000 - 1000,
+        Math.random() * 200 + 100,
+        Math.random() * 2000 - 1000
+    );
+    scene.add(cloud);
+}
+
+const seaGeometry = new THREE.PlaneGeometry(10000, 10000);
+const seaTexture = new THREE.TextureLoader().load(
+    '/img/sea.jpg',
+    () => { renderer.render(scene, camera); },
+    undefined,
+    (err) => { console.error('Error loading texture', err); }
+);
 const seaMaterial = new THREE.MeshStandardMaterial({
-    color: 0x006994,
-    metalness: 0.8,
-    roughness: 0.2
+    map: seaTexture,
+    roughness: 0.9,
+    metalness: 0.1
 });
 const sea = new THREE.Mesh(seaGeometry, seaMaterial);
 sea.rotation.x = -Math.PI / 2;
@@ -206,12 +254,18 @@ sea.receiveShadow = true;
 scene.add(sea);
 
 
-const ambientLight = new THREE.AmbientLight();
+const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
 scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 0.3);
+directionalLight.position.set(100, 300, 100);
+directionalLight.castShadow = true;
+scene.add(directionalLight);
 
 const idealOffset = new THREE.Vector3(0, -50, 50);
 const idealLookAt = new THREE.Vector3(0, 0, 0);
 
+flightGroup.position.set(0, 150, 0);
 camera.position.set(0, 25, 50);
 camera.lookAt(0, 0, 0);
 
@@ -225,10 +279,12 @@ const MAX_SPEED = 2;
 const ACCELERATION = 0.01;
 const DECELERATION = 0.005;
 const ROTATION = 0.01;
-const GRAVITY = 0.005;
+const GRAVITY = 0.001;
 const SEA_LEVEL = -200;
 
 const keys = {};
+
+const bbVelocities = bombs.map(() => 0);
 
 window.addEventListener('keydown', (e) => {
     keys[e.key.toLowerCase()] = true;
@@ -296,20 +352,21 @@ function animate() {
     const offset = idealOffset.clone();
     offset.applyQuaternion(flightGroup.quaternion);
     const targetPosition = flightGroup.position.clone().add(offset);
-    
+
     const lookAt = idealLookAt.clone();
     lookAt.applyQuaternion(flightGroup.quaternion);
     const targetLookAt = flightGroup.position.clone().add(lookAt);
-    
+
     // Smooth camera movement
     camera.position.lerp(targetPosition, 0.1);
-    
+
     const currentLookAt = new THREE.Vector3();
     camera.getWorldDirection(currentLookAt);
     currentLookAt.multiplyScalar(10).add(camera.position);
     currentLookAt.lerp(targetLookAt, 0.1);
     camera.lookAt(currentLookAt);
 
+    // Stars
     const positions = starGeometry.attributes.position.array;
     for (let i = 0; i < positions.length; i += 3) {
         positions[i + 2] += speed;
@@ -318,6 +375,17 @@ function animate() {
         }
     }
     starGeometry.attributes.position.needUpdate = true;
+
+    // bb
+    bombs.forEach((bomb, i) => {
+        bbVelocities[i] += GRAVITY * 10;
+        bomb.position.y -= bbVelocities[i];
+
+        if (bomb.position.y < SEA_LEVEL) {
+            bomb.position.y = SEA_LEVEL;
+            bbVelocities[i] = 0;
+        }
+    });
 
     renderer.render(scene, camera);
 }
