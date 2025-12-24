@@ -1,4 +1,5 @@
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js';
+import { Water } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/objects/Water.js';
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x8a9a9b, 150, 600);
@@ -170,7 +171,83 @@ flightGroup.rotation.x = Math.PI / -2;
 
 const navyGroup = new THREE.Group();
 
-const hullGeometry = new THREE.ConeGeometry();
+const hullShape = new THREE.Shape();
+hullShape.moveTo(0, 40);
+hullShape.bezierCurveTo(15, 20, 15, -20, 10, -40);
+hullShape.lineTo(-10, -40);
+hullShape.bezierCurveTo(-15, -20, -10, 20, 0, 40);
+const extrude = {
+    steps: 1,
+    depth: 6,
+    bevelEnabled: true,
+    bevelThickness: 3,
+    bevelSize: 5,
+    bevelOffset: -5,
+    bevelSegments: 5
+}
+const hullGeometry = new THREE.ExtrudeGeometry(hullShape, extrude);
+const hullMaterial = new THREE.MeshStandardMaterial({
+    color: 0x444d53,
+    metalness: 0.5,
+    roughness: 0.4
+});
+const hull = new THREE.Mesh(hullGeometry, hullMaterial);
+hull.rotation.x = -Math.PI / 2;
+hull.position.y = -205;
+hull.castShadow = true;
+hull.receiveShadow = true;
+navyGroup.add(hull);
+
+const superstructure = new THREE.Group();
+
+const lowerTierGeometry = new THREE.BoxGeometry(12, 25, 8);
+const lowerTier = new THREE.Mesh(lowerTierGeometry, hullMaterial);
+lowerTier.position.set(0, 4, 0);
+lowerTier.castShadow = true;
+lowerTier.receiveShadow = true;
+superstructure.add(lowerTier);
+
+const upperTierGeometry = new THREE.BoxGeometry(8, 12, 6);
+const upperTier = new THREE.Mesh(upperTierGeometry, hullMaterial);
+upperTier.position.set(0, 8, 4);
+upperTier.castShadow = true;
+upperTier.receiveShadow = true;
+superstructure.add(upperTier);
+
+const mastGeometry = new THREE.CylinderGeometry(0.5, 1, 15, 8);
+const mast = new THREE.Mesh(mastGeometry, hullMaterial);
+mast.position.set(0, 14, 0);
+mast.castShadow = true;
+superstructure.add(mast);
+
+superstructure.position.set(0, 0, 14);
+hull.add(superstructure);
+
+function createTurret(zPos) {
+    const turretGroup = new THREE.Group();
+
+    const baseGeometry = new THREE.BoxGeometry(8, 8, 4);
+    const base = new THREE.Mesh(baseGeometry, hullMaterial);
+    turretGroup.add(base);
+
+    const barrelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 10, 8);
+    const barrelMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+    const leftBarrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    leftBarrel.rotation.x = Math.PI / 2;
+
+    const rightBarrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+
+    turretGroup.add(leftBarrel, rightBarrel);
+    turretGroup.position.set(0, zPos, 8);
+    return turretGroup;
+}
+
+const frontTurret = createTurret(25);
+const rearTurret = createTurret(-25);
+hull.add(frontTurret, rearTurret);
+
+scene.add(navyGroup);
 
 const bombs = [];
 
@@ -236,21 +313,21 @@ for (let i = 0; i < 30; i++) {
 }
 
 const seaGeometry = new THREE.PlaneGeometry(10000, 10000);
-const seaTexture = new THREE.TextureLoader().load(
-    '/img/sea.jpg',
-    () => { renderer.render(scene, camera); },
-    undefined,
-    (err) => { console.error('Error loading texture', err); }
-);
-const seaMaterial = new THREE.MeshStandardMaterial({
-    map: seaTexture,
-    roughness: 0.9,
-    metalness: 0.1
-});
-const sea = new THREE.Mesh(seaGeometry, seaMaterial);
+const sea = new Water(
+    seaGeometry,
+    {
+        textureWidth: 512,
+        textureHeight: 512,
+        waterNormals: new THREE.TextureLoader().load('https://threejs.org/examples/textures/waternormals.jpg', function (texture) {
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        }),
+        waterColor: 0x001e0f,
+        distortionScale: 3.7,
+        fog: scene.fog !== undefined
+    }
+)
 sea.rotation.x = -Math.PI / 2;
-sea.position.set(0, -200, 0);
-sea.receiveShadow = true;
+sea.position.y = -200;
 scene.add(sea);
 
 
@@ -346,6 +423,8 @@ function animate() {
     updateControls();
     updatePhysics();
 
+    sea.material.uniforms['time'].value += 0.016;
+
     propeller.rotation.y += propellerSpeed;
 
     // Camera follows plane rotation
@@ -359,6 +438,9 @@ function animate() {
 
     // Smooth camera movement
     camera.position.lerp(targetPosition, 0.1);
+    /*if (camera.position.y < SEA_LEVEL) {
+        camera.position.y = SEA_LEVEL + 10;
+    }*/
 
     const currentLookAt = new THREE.Vector3();
     camera.getWorldDirection(currentLookAt);
@@ -386,6 +468,10 @@ function animate() {
             bbVelocities[i] = 0;
         }
     });
+
+    // rocking
+    navyGroup.rotation.z = Math.sin(Date.now() * 0.001) * 0.005;
+    navyGroup.position.y += Math.sin(Date.now() * 0.001) * 0.02;
 
     renderer.render(scene, camera);
 }
