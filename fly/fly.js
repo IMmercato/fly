@@ -169,6 +169,7 @@ flightGroup.add(rightWheel);
 
 flightGroup.rotation.x = Math.PI / -2;
 
+const fleet = [];
 const navyGroup = new THREE.Group();
 
 const hullShape = new THREE.Shape();
@@ -193,7 +194,6 @@ const hullMaterial = new THREE.MeshStandardMaterial({
 });
 const hull = new THREE.Mesh(hullGeometry, hullMaterial);
 hull.rotation.x = -Math.PI / 2;
-hull.position.y = -205;
 hull.castShadow = true;
 hull.receiveShadow = true;
 navyGroup.add(hull);
@@ -223,11 +223,12 @@ superstructure.add(mast);
 superstructure.position.set(0, 0, 14);
 hull.add(superstructure);
 
-function createTurret(zPos) {
+function createTurret(yPos) {
     const turretGroup = new THREE.Group();
 
     const baseGeometry = new THREE.BoxGeometry(8, 8, 4);
     const base = new THREE.Mesh(baseGeometry, hullMaterial);
+    base.position.z = 2;
     turretGroup.add(base);
 
     const barrelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 10, 8);
@@ -235,11 +236,14 @@ function createTurret(zPos) {
 
     const leftBarrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
     leftBarrel.rotation.x = Math.PI / 2;
+    leftBarrel.position.set(-1.5, 5, 2);
 
     const rightBarrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    rightBarrel.rotation.x = Math.PI / 2;
+    rightBarrel.position.set(1.5, 5, 2);
 
     turretGroup.add(leftBarrel, rightBarrel);
-    turretGroup.position.set(0, zPos, 8);
+    turretGroup.position.set(0, yPos, 7);
     return turretGroup;
 }
 
@@ -247,7 +251,19 @@ const frontTurret = createTurret(25);
 const rearTurret = createTurret(-25);
 hull.add(frontTurret, rearTurret);
 
-scene.add(navyGroup);
+for (let i = 0; i < 100; i++) {
+    const navyship = navyGroup.clone();
+    const x = (Math.random() - 0.5) * 5000;
+    const z = (Math.random() - 0.5) * 5000;
+    navyship.position.set(x, -205, z);
+    navyship.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(navyship);
+    fleet.push(navyship);
+}
+
+const bullets = [];
+const bulletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+const bulletMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
 
 const bombs = [];
 
@@ -352,6 +368,7 @@ scene.add(flightGroup);
 let propellerSpeed = 0;
 let speed = 0.05;
 let speedy = 0;
+const bulletspeed = 1;
 const MAX_SPEED = 2;
 const ACCELERATION = 0.01;
 const DECELERATION = 0.005;
@@ -365,6 +382,7 @@ const bbVelocities = bombs.map(() => 0);
 
 window.addEventListener('keydown', (e) => {
     keys[e.key.toLowerCase()] = true;
+    if (e.code === 'Space') shoot();
 });
 
 window.addEventListener('keyup', (e) => {
@@ -384,38 +402,86 @@ function updateControls() {
     }
 
     // Pitch
-    if (keys['arrowup']) flightGroup.rotation.x += ROTATION;
-    if (keys['arrowdown']) flightGroup.rotation.x -= ROTATION;
+    if (keys['arrowup']) flightGroup.rotateX(ROTATION);
+    if (keys['arrowdown']) flightGroup.rotateX(-ROTATION);
 
     // Roll
-    if (keys['a']) flightGroup.rotation.y += ROTATION;
-    if (keys['d']) flightGroup.rotation.y -= ROTATION;
+    if (keys['a']) flightGroup.rotateY(ROTATION);
+    if (keys['d']) flightGroup.rotateY(-ROTATION);
 
     // Yaw
-    if (keys['arrowright']) flightGroup.rotation.z -= ROTATION;
-    if (keys['arrowleft']) flightGroup.rotation.z += ROTATION;
+    if (keys['arrowright']) flightGroup.rotateZ(-ROTATION);
+    if (keys['arrowleft']) flightGroup.rotateZ(ROTATION);
 
-    // Damping
-    if (!keys['a'] && !keys['d']) flightGroup.rotation.z *= 0.99;
+    speedy = Math.max(Math.min(speedy, 0.5), -0.5);
 }
 
 function updatePhysics() {
     const forward = new THREE.Vector3(0, 1, 0);
-
     forward.applyQuaternion(flightGroup.quaternion);
 
-    forward.multiplyScalar(speed);
-    flightGroup.position.add(forward);
+    flightGroup.position.addScaledVector(forward, speed);
 
-    speedy -= GRAVITY;
+    if (speed < 0.2) {
+        speedy -= GRAVITY * 2;
+    } else {
+        speedy *= 0.9;
+    }
 
     flightGroup.position.y += speedy;
 
-    if (flightGroup.position.y <= SEA_LEVEL + 5) {
-        flightGroup.position.y = SEA_LEVEL + 5;
-        if (speedy < 0) speedy = 0;
-        speed *= 0.75;
+    if (flightGroup.position.y <= SEA_LEVEL + 3) {
+        flightGroup.position.y = SEA_LEVEL + 3;
+        speedy = 0;
+        speed *= 0.95;
     }
+}
+
+function shoot() {
+    const wingOffsets = [-10, 10];
+    wingOffsets.forEach(xOffset => {
+        const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+        bullet.position.copy(flightGroup.position);
+
+        const localOffset = new THREE.Vector3(xOffset, 0, 0);
+        localOffset.applyQuaternion(flightGroup.quaternion);
+        bullet.position.add(localOffset);
+
+        const direction = new THREE.Vector3(0, 1, 0);
+        direction.applyQuaternion(flightGroup.quaternion);
+
+        bullet.userData.velocity = direction.multiplyScalar(bulletspeed + speed);
+        bullet.userData.aliveTime = 0;
+
+        scene.add(bullet);
+        bullets.push(bullet);
+    });
+}
+
+const explosions = [];
+function createExplosion(position) {
+    const particleCount = 10;
+    const group = new THREE.Group();
+    group.position.copy(position);
+
+    for (let i = 0; i < particleCount; i++) {
+        const geometry = new THREE.SphereGeometry(Math.random() * 2, 4, 4);
+        const material = new THREE.MeshBasicMaterial({
+            color: Math.random() > 0.5 ? 0xff4400 : 0xffaa00,
+            transparent: true
+        });
+        const particle = new THREE.Mesh(geometry, material);
+
+        particle.userData.velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2
+        );
+        group.add(particle);
+    }
+
+    scene.add(group);
+    explosions.push({ group, life: 1.0 });
 }
 
 function animate() {
@@ -438,9 +504,9 @@ function animate() {
 
     // Smooth camera movement
     camera.position.lerp(targetPosition, 0.1);
-    /*if (camera.position.y < SEA_LEVEL) {
+    if (camera.position.y < SEA_LEVEL) {
         camera.position.y = SEA_LEVEL + 10;
-    }*/
+    }
 
     const currentLookAt = new THREE.Vector3();
     camera.getWorldDirection(currentLookAt);
@@ -470,8 +536,51 @@ function animate() {
     });
 
     // rocking
-    navyGroup.rotation.z = Math.sin(Date.now() * 0.001) * 0.005;
-    navyGroup.position.y += Math.sin(Date.now() * 0.001) * 0.02;
+    const time = Date.now() * 0.001;
+    fleet.forEach((ship, i) => {
+        ship.rotation.z = Math.sin(time + i) * 0.015;
+        ship.position.y += Math.sin(time + i) * 0.02;
+    });
+
+    // bullets
+    bullets.forEach((bullet, index) => {
+        bullet.position.add(bullet.userData.velocity);
+        bullet.userData.aliveTime++;
+
+        fleet.forEach((ship) => {
+            if (bullet.position.distanceTo(ship.position) < 40) {
+                createExplosion(bullet.position);
+
+                scene.remove(bullet);
+                bullets.splice(index, 1);
+
+                ship.children[0].material.emissive.setHex(0xff0000);
+                setTimeout(() => {
+                    if (ship.children[0]) ship.children[0].material.emissive.setHex(0x000000);
+                }, 100);
+            }
+        });
+
+        if (bullet.userData.aliveTime > 250) {
+            scene.remove(bullet);
+            bullets.splice(index, 1);
+        }
+    });
+
+    // explosions
+    explosions.forEach((explosion, eIndex) => {
+        explosion.life -= 0.02;
+        explosion.group.children.forEach(p => {
+            p.position.add(p.userData.velocity);
+            p.material.opacity = explosion.life;
+            p.scale.multiplyScalar(0.98);
+        });
+
+        if (explosion.life <= 0) {
+            scene.remove(explosion.group);
+            explosions.splice(eIndex, 1);
+        }
+    });
 
     renderer.render(scene, camera);
 }
