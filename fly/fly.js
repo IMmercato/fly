@@ -368,6 +368,7 @@ scene.add(flightGroup);
 let propellerSpeed = 0;
 let speed = 0.05;
 let speedy = 0;
+let shipHits = 0;
 const bulletspeed = 1;
 const MAX_SPEED = 2;
 const ACCELERATION = 0.01;
@@ -484,10 +485,25 @@ function createExplosion(position) {
     explosions.push({ group, life: 1.0 });
 }
 
+const infoElement = document.getElementById('info');
+function updateUI() {
+    const altitude = Math.max(0, flightGroup.position.y - SEA_LEVEL).toFixed(1);
+
+    const displayspeed = (speed * 100).toFixed(0);
+
+    infoElement.innerHTML = `
+        [ FLIGHT 001 ]<br>
+        SPEED: ${displayspeed} knots<br>
+        ALTITUDE: ${altitude} ft<br>
+        SHIP HITS: ${shipHits}<br>
+    `;
+}
+
 function animate() {
     requestAnimationFrame(animate);
     updateControls();
     updatePhysics();
+    updateUI();
 
     sea.material.uniforms['time'].value += 0.016;
 
@@ -550,6 +566,7 @@ function animate() {
         fleet.forEach((ship) => {
             if (bullet.position.distanceTo(ship.position) < 40) {
                 createExplosion(bullet.position);
+                shipHits++;
 
                 scene.remove(bullet);
                 bullets.splice(index, 1);
