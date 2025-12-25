@@ -47,3 +47,35 @@
     text-align: center;
     white-space: nowrap;
 }
+
+#radar {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 150px;
+    height: 150px;
+    background: rgba(0, 40, 0, 0.7);
+    border: 2px solid #00ff00;
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+#player-dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    background: white;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    z-index: 10;
+}
+
+.radar-dot {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
