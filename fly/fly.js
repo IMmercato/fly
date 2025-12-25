@@ -271,12 +271,12 @@ const bbGeometry = new THREE.CylinderGeometry(5, 5, 8, 8);
 const bbMaterial = new THREE.MeshStandardMaterial({
     color: 0x000000
 });
-for (let i = 0; i < 50; i++) {
+for (let i = 0; i < 150; i++) {
     const bb = new THREE.Mesh(bbGeometry, bbMaterial);
     bb.position.set(
-        Math.random() * 500,
-        Math.random() * 200,
-        Math.random() * 500
+        (Math.random() - 0.5) * 3000,
+        1000 + Math.random() * 500,
+        (Math.random() - 0.5) * 3000
     );
     bombs.push(bb);
     scene.add(bb);
@@ -415,6 +415,11 @@ function updateControls() {
     if (keys['arrowleft']) flightGroup.rotateZ(ROTATION);
 
     speedy = Math.max(Math.min(speedy, 0.5), -0.5);
+
+    if (keys['w']) {
+        document.getElementById('instructions').style.opacity = '0';
+        document.getElementById('instructions').style.transition = 'opacity 1s';
+    }
 }
 
 function updatePhysics() {
@@ -436,6 +441,17 @@ function updatePhysics() {
         speedy = 0;
         speed *= 0.95;
     }
+
+    fleet.forEach((ship) => {
+        if (flightGroup.position.distanceTo(ship.position) < 35) {
+            createExplosion(flightGroup.position);
+
+            speed = -0.1;
+            speed = 0.2;
+
+            alert("NO SIGNALS!");
+        }
+    });
 }
 
 function shoot() {
@@ -483,6 +499,9 @@ function createExplosion(position) {
 
     scene.add(group);
     explosions.push({ group, life: 1.0 });
+
+    camera.position.x += (Math.random() - 0.5) * 5;
+    camera.position.y += (Math.random() - 0.5) * 5;
 }
 
 const infoElement = document.getElementById('info');
@@ -497,6 +516,16 @@ function updateUI() {
         ALTITUDE: ${altitude} ft<br>
         SHIP HITS: ${shipHits}<br>
     `;
+}
+const alertElement = document.getElementById('alert');
+function alert(message) {
+    alertElement.innerHTML = message;
+    alertElement.style.opacity = "1";
+
+    clearTimeout(alertElement.timeout);
+    alertElement.timeout = setTimeout(() => {
+        alertElement.style.opacity = "0";
+    }, 2000);
 }
 
 function animate() {
@@ -548,6 +577,24 @@ function animate() {
         if (bomb.position.y < SEA_LEVEL) {
             bomb.position.y = SEA_LEVEL;
             bbVelocities[i] = 0;
+        }
+
+        const distance = bomb.position.distanceTo(flightGroup.position);
+
+        if (distance < 50 && distance > 18) {
+            alert("PROXIMITY WARNING: MMINE NEARBY");
+        }
+
+        if (distance < 18) {
+            createExplosion(bomb.position);
+
+            bomb.position.y = 800;
+            bomb.position.x = (Math.random() - 0.5) * 1000;
+            bomb.position.z = (Math.random() - 0.5) * 1000;
+            bbVelocities[i] = 0;
+
+            speed *= 0.4;
+            alert("CRITICAL HIT: ENGINE DAMAGE");
         }
     });
 
