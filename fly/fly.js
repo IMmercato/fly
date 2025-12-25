@@ -504,6 +504,63 @@ function createExplosion(position) {
     camera.position.y += (Math.random() - 0.5) * 5;
 }
 
+// F4U Corsair
+function createCorsair() {
+    const corsairGroup = new THREE.Group();
+
+    const bodyGeometry = new THREE.CylinderGeometry(1.8, 1.5, 18, 16);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x152238,
+        metalness: 0.6,
+        roughness: 0.3
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.rotation.x = Math.PI / 2;
+    corsairGroup.add(body);
+
+    const wingInnerGeometry = new THREE.BoxGeometry(6, 0.5, 4);
+    const innerWingL = new THREE.Mesh(wingInnerGeometry, bodyMaterial);
+    innerWingL.position.set(-3, -1, 0);
+    innerWingL.rotation.z = 0.3;
+    const innerWingR = new THREE.Mesh(wingInnerGeometry, bodyMaterial);
+    innerWingR.position.set(3, -1, 0);
+    innerWingR.rotation.z = -0.3;
+
+    const wingOuterGeometry = new THREE.BoxGeometry(8, 0.4, 3.5);
+    const outerWingL = new THREE.Mesh(wingOuterGeometry, bodyMaterial);
+    outerWingL.position.set(-9, 0.5, 0);
+    outerWingL.rotation.z = -0.5;
+    const outerWingR = new THREE.Mesh(wingOuterGeometry, bodyMaterial);
+    outerWingR.position.set(9, 0.5, 0);
+    outerWingR.rotation.z = 0.5;
+
+    corsairGroup.add(innerWingL, outerWingL);
+    corsairGroup.add(innerWingR, outerWingR);
+
+    const stabilizerGeometry = new THREE.BoxGeometry(10, 0.1, 1);
+    const stabilizer = new THREE.Mesh(stabilizerGeometry, bodyMaterial);
+    stabilizer.position.set(0, 0, -7);
+    corsairGroup.add(stabilizer);
+
+    const tailGeometry = new THREE.BoxGeometry(0.2, 5, 3);
+    const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
+    tail.position.set(0, 2, -7);
+    corsairGroup.add(tail);
+
+    const propellerBladeGeometry = new THREE.BoxGeometry(5, 0.1, 0.5);
+    const propeller = new THREE.Group();
+    for (let i = 0; i < 2; i++) {
+        const blade = new THREE.Mesh(propellerBladeGeometry, bodyMaterial);
+        blade.rotation.y = i * Math.PI;
+        propeller.add(blade);
+    }
+    propeller.position.set(0, 0, 9);
+    corsairGroup.add(propeller);
+
+    return corsairGroup;
+}
+scene.add(createCorsair());
+
 const infoElement = document.getElementById('info');
 function updateUI() {
     const altitude = Math.max(0, flightGroup.position.y - SEA_LEVEL).toFixed(1);
