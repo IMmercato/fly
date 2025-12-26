@@ -516,7 +516,6 @@ function createCorsair(isEnemy = true) {
         roughness: 0.3
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    body.rotation.x = Math.PI / 2;
     corsairGroup.add(body);
 
     const createWing = (side) => {
@@ -524,12 +523,12 @@ function createCorsair(isEnemy = true) {
 
         const wingInnerGeometry = new THREE.BoxGeometry(6, 0.5, 4);
         const inner = new THREE.Mesh(wingInnerGeometry, bodyMaterial);
-        inner.position.x = 2 * side;
+        inner.position.set(2 * side, 0, 0);
         inner.rotation.z = 0.4 * side;
 
         const wingOuterGeometry = new THREE.BoxGeometry(8, 0.4, 3.5);
         const outer = new THREE.Mesh(wingOuterGeometry, bodyMaterial);
-        outer.position.set(6 * side, 0.5, 0);
+        outer.position.set(6 * side, 1.5, 0);
         outer.rotation.z = -0.3 * side;
 
         wingGroup.add(inner, outer);
@@ -539,24 +538,25 @@ function createCorsair(isEnemy = true) {
     corsairGroup.add(createWing(1));
     corsairGroup.add(createWing(-1));
 
-    const stabilizerGeometry = new THREE.BoxGeometry(10, 0.1, 1);
+    const stabilizerGeometry = new THREE.BoxGeometry(10, 0.1, 2);
     const stabilizer = new THREE.Mesh(stabilizerGeometry, bodyMaterial);
-    stabilizer.position.set(0, 0, -7);
+    stabilizer.position.set(0, -7, 0);
     corsairGroup.add(stabilizer);
 
     const tailGeometry = new THREE.BoxGeometry(0.2, 5, 3);
     const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
-    tail.position.set(0, 2, -7);
+    tail.position.set(0, -7, 1.5);
     corsairGroup.add(tail);
 
     const propellerBladeGeometry = new THREE.BoxGeometry(5, 0.1, 0.5);
     const propeller = new THREE.Group();
     for (let i = 0; i < 3; i++) {
         const blade = new THREE.Mesh(propellerBladeGeometry, bodyMaterial);
-        blade.rotation.y = i * Math.PI;
+        blade.rotation.y = (i * Math.PI * 2) / 3;
         propeller.add(blade);
     }
-    propeller.position.set(0, 0, 9);
+    propeller.position.set(0, 9, 0);
+    propeller.name = "propeller";
     corsairGroup.add(propeller);
 
     return corsairGroup;
@@ -567,18 +567,27 @@ const wingmen = [];
 
 for (let i = 0; i < 5; i++) {
     const enemy = createCorsair(true);
-    enemy.position.set(Math.random() * 500, 200, Math.random() * 500);
+    enemy.position.set(
+        (Math.random() - 0.5) * 1000,
+        200 + Math.random() * 100,
+        (Math.random() - 0.5) * 1000
+    );
+    enemy.userData.behavior = Math.random() > 0.5 ? 'intercept' : 'circle';
+    enemy.userData.circleAngle = Math.random() * Math.PI * 2;
+    enemy.userData.preferredAltitude = 150 + Math.random() * 100;
     scene.add(enemy);
     enemies.push(enemy);
 }
 
 for (let i = 0; i < 2; i++) {
     const ally = createCorsair(false);
+    const sideOffset = (i === 0) ? 30 : -30;
     ally.position.set(
-        flightGroup.position.x + (i === 0 ? 30 : -30),
-        Math.max(flightGroup.position.y - 5, SEA_LEVEL + 25),
+        flightGroup.position.x + sideOffset,
+        Math.max(flightGroup.position.y - 5, SEA_LEVEL + 50),
         flightGroup.position.z - 40
     );
+    ally.rotation.copy(flightGroup.rotation);
     scene.add(ally);
     wingmen.push(ally);
 }
@@ -588,20 +597,78 @@ function updateAI() {
     const MIN_SAFE_ALTITUDE = SEA_LEVEL + 25;
 
     enemies.forEach((enemy, i) => {
-        enemy.lookAt(flightGroup.position);
+        const propeller = enemy.getObjectByName("propeller");
+        if (propeller) propeller.rotation.y += 0.3;
 
-        const direction = new THREE.Vector3();
-        enemy.getWorldDirection(direction);
-        enemy.position.addScaledVector(direction, 0.8);
+        const toPlayer = new THREE.Vector3().subVectors(flightGroup.position, enemy.position);
+        const distance = toPlayer.length();
 
-        enemy.position.y += Math.sin(time + i) * 0.2;
+        let targetPosition = new THREE.Vector3();
 
-        if (enemy.position.y < MIN_SAFE_ALTITUDE - 10) {
-            enemy.position.y = MIN_SAFE_ALTITUDE + Math.random() * 20;
+        const targetAltitude = Math.max(flightGroup.position.y + 10, MIN_SAFE_ALTITUDE);
+
+        if (enemy.userData.behavior === 'circle') {
+            const CIRCLE_RADIUS = 200;
+            enemy.userData.circleAngle += 0.01;
+            targetPosition.x = flightGroup.position.x + Math.cos(enemy.userData.circleAngle) * CIRCLE_RADIUS;
+            targetPosition.z = flightGroup.position.z + Math.sin(enemy.userData.circleAngle) * CIRCLE_RADIUS;
+            targetPosition.y = targetAltitude;
+        } else {
+            const playerForward = new THREE.Vector3(0, 1, 0);
+            playerForward.applyQuaternion(flightGroup.quaternion);
+            targetPosition.copy(flightGroup.position).sub(playerForward.multiplyScalar(50));
+            targetPosition.y = targetAltitude;
         }
 
-        if (enemy.position.distanceTo(flightGroup.position) < 100) {
-            alert("WARNING: ENEMY ACE ON YOUR TAIL!");
+        const lookMatrix = new THREE.Matrix4();
+        lookMatrix.lookAt(enemy.position, targetPosition, new THREE.Vector3(0, 1, 0));
+        const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(lookMatrix);
+
+        const adjustment = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+        targetQuaternion.multiply(adjustment);
+
+        enemy.quaternion.slerp(targetQuaternion, 0.03);
+        const forward = new THREE.Vector3(0, 1, 0);
+        forward.applyQuaternion(enemy.quaternion);
+        enemy.position.addScaledVector(forward, 0.9);
+
+        if (enemy.position.y < MIN_SAFE_ALTITUDE) {
+            enemy.position.y = MIN_SAFE_ALTITUDE;
+        }
+
+        if (distance > 2000) {
+            enemy.position.set(
+                flightGroup.position.x + (Math.random() - 0.5) * 500,
+                flightGroup.position.y + 100,
+                flightGroup.position.z - 800
+            );
+        }
+
+        if (distance < 400) {
+            if (!enemy.userData.lastShotTime || time * 1000 - enemy.userData.lastShotTime > ENEMY_FIRE_RATE) {
+                spawnEnemyBullet(enemy);
+                enemy.userData.lastShotTime = time * 1000;
+            }
+        }
+    });
+
+    enemyBullets.forEach((bullet, index) => {
+        if (!bullet.userData.velocity) return;
+
+        bullet.position.add(bullet.userData.velocity);
+
+        if (bullet.position.distanceTo(flightGroup.position) < 5) {
+            createExplosion(bullet.position);
+            scene.remove(bullet);
+            enemyBullets.slice(index, 1);
+
+            speed *= 0.7;
+            alert("SYSTEMS CRITICAL: WE ARE HIT!");
+        }
+
+        if (bullet.position.distanceTo(flightGroup.position) > 1000) {
+            scene.remove(bullet);
+            enemyBullets.splice(index, 1);
         }
     });
 
@@ -623,7 +690,7 @@ function updateAI() {
             forwardDirection.normalize();
 
             const horizontalOffset = new THREE.Vector3(sideOffset, 0, 0);
-            horizontalOffset.applyQuaternion(flightGroup.position);
+            horizontalOffset.applyQuaternion(flightGroup.quaternion);
 
             targetPosition.copy(flightGroup.position);
             targetPosition.y = MIN_SAFE_ALTITUDE;
@@ -642,8 +709,25 @@ function updateAI() {
             targetQuaternion.multiply(pitchUp);
         }
 
-        ally.quaternion.slerp(flightGroup.quaternion, 0.05);
+        ally.quaternion.slerp(targetQuaternion, 0.07);
     });
+}
+const enemyBullets = [];
+const ENEMY_FIRE_RATE = 2000;
+function spawnEnemyBullet(enemy) {
+    const geometry = new THREE.SphereGeometry(0.5, 8, 8);
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const bullet = new THREE.Mesh(geometry, material);
+
+    bullet.position.copy(enemy.position);
+
+    const direction = new THREE.Vector3();
+    direction.subVectors(flightGroup.position, enemy.position).normalize();
+
+    bullet.userData.velocity = direction.multiplyScalar(4);
+
+    scene.add(bullet);
+    enemyBullets.push(bullet);
 }
 
 const infoElement = document.getElementById('info');
@@ -692,6 +776,13 @@ function updateRadar() {
             dot.style.left = `${x}px`;
             dot.style.top = `${y}px`;
             radarElement.appendChild(dot);
+
+            const isFiring = distance < 100;
+            if (isFiring) {
+                dot.style.boxShadow = "0 0 10px #ff0000";
+                dot.style.width = "6px";
+                dot.style.height = "6px";
+            }
         }
     };
 
